@@ -1,3 +1,0 @@
-/home/albinolobster/mikrotik/tests/build/CMakeFiles/rebuild_cache.dir
-/home/albinolobster/mikrotik/tests/build/CMakeFiles/message_tests.dir
-/home/albinolobster/mikrotik/tests/build/CMakeFiles/edit_cache.dir
