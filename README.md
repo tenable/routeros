@@ -1,6 +1,6 @@
 # Bug Hunting in RouterOS
 
-The tools in this repository were originally presented at Derbycon 2018. The tools were written to aid in (or were the result of) bug hunting in RouterOS. The main focus is the message protocol used on ports 80 and 8219.
+The tools in this repository were originally presented at Derbycon 2018. The tools were written to aid in (or were the result of) bug hunting in RouterOS. The main focus is the message protocol used on ports 80 and 8291.
 
 ## Building
 
