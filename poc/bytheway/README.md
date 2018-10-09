@@ -2,9 +2,9 @@
 
 By the Way is an exploit that enables a root shell on Mikrotik devices running RouterOS versions:
 
-Longterm: 6.30.1 - 6.40.7
-Stable: 6.29 - 6.42
-Beta: 6.29rc1 - 6.43rc3
+* Longterm: 6.30.1 - 6.40.7
+* Stable: 6.29 - 6.42
+* Beta: 6.29rc1 - 6.43rc3
 
 The exploit leverages the path traversal vulnerability CVE-2018-14847 to extract the admin password and create an "option" package to enable the developer backdoor. Post exploitation the attacker can connect to Telnet or SSH using the root user "devel" with the admin's password.
 
