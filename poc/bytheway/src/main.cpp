@@ -202,6 +202,24 @@ namespace
                         }
                         p_password.push_back(decrypted);
                     }
+
+                    // not everything is null terminated. Kind of annoying. Let's
+                    // loop over the result and see if everything is ascii. If
+                    // so we can roll with that.
+                    bool good = true;
+                    for (std::size_t i = 0; i < p_password.size() && good; i++)
+                    {
+                        if (((unsigned char)p_password[i]) < 0x20 ||
+                            ((unsigned char)p_password[i]) > 0x7f)
+                        {
+                            good = false;
+                        }
+                    }
+
+                    if (good)
+                    {
+                        return true;
+                    }
                     p_password.clear();
                 }
             }
