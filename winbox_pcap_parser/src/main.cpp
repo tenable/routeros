@@ -67,19 +67,12 @@ void parse_string(std::string& p_data, bool p_server)
         std::string data(p_data);
         boost::uint16_t advertised_length = (data[2] & 0xff) << 8 | (data[3] & 0xff);
 
-        if (data.size() != (advertised_length + 4))
+        if (data.size() < (advertised_length + 4))
         {
-            if (data.size() > (advertised_length + 4))
-            {
-                data.resize(advertised_length + 4);
-            }
-            else
-            {
-                // the parser doesn't handle the case where an incomplete message
-                // is passed here
-                p_data.clear();
-                return;
-            }
+            // the parser doesn't handle the case where an incomplete message
+            // is passed here
+            p_data.clear();
+            return;
         }
 
         if ((data[0] & 0xff) == 0xff)
@@ -87,8 +80,17 @@ void parse_string(std::string& p_data, bool p_server)
             // special logic to erase ffs
             for (std::size_t i = 0x101; i < data.size(); i += 0xff)
             {
+                if (static_cast<unsigned char>(data[i+1]) != 0xff)
+                {
+                    break;
+                }
                 data.erase(i, 2);
             }
+        }
+
+        if (data.size() > (advertised_length + 4))
+        {
+            data.resize(advertised_length + 4);
         }
 
         if (data[4] != 'M' || data[5] != '2')
