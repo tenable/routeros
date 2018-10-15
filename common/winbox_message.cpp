@@ -675,6 +675,21 @@ bool WinboxMessage::parse_binary(const std::string& p_input)
                             }
                             input.erase(0, length);
                         }
+                        else
+                        {
+                            // its hard to account for the weird seperators that
+                            // MT has inserted mid message. Just mark the entire
+                            // remaining message as raw and get on with life
+                            if (type == variable_type::k_raw)
+                            {
+                                m_raw.insert(std::make_pair(name, input));
+                            }
+                            else
+                            {
+                                m_strings.insert(std::make_pair(name, input));
+                            }
+                            input.clear();
+                        }
                     }
                 }
                 break;
@@ -706,6 +721,17 @@ bool WinboxMessage::parse_binary(const std::string& p_input)
                                 m_msgs.insert(std::make_pair(name, temp));
                                 input.erase(0, length);
                             }
+                        }
+                        else if (input.size() > 2 && input[0] == 'M' && input[1] == '2')
+                        {
+                            // its hard to account for the weird seperators that
+                            // MT has inserted mid message. Just mark the entire
+                            // remaining message as msg and get on with life
+                            input.erase(0, 2);
+                            WinboxMessage temp;
+                            temp.parse_binary(input);
+                            m_msgs.insert(std::make_pair(name, temp));
+                            input.clear();
                         }
                     }
                 }
@@ -1186,7 +1212,11 @@ std::string WinboxMessage::get_error_string() const
 {
     if (has_error())
     {
-        if (m_u32s.find(variable_names::k_error_code) != m_u32s.end())
+        if (m_strings.find(variable_names::k_error_string) != m_strings.end())
+        {
+            return m_strings.find(variable_names::k_error_string)->second;
+        }
+        else if (m_u32s.find(variable_names::k_error_code) != m_u32s.end())
         {
             switch (m_u32s.find(variable_names::k_error_code)->second)
             {
@@ -1205,10 +1235,6 @@ std::string WinboxMessage::get_error_string() const
                 default:
                     return "Unknown error code";
             }
-        }
-        else
-        {
-            return m_strings.find(variable_names::k_error_string)->second;
         }
     }
     return std::string();
