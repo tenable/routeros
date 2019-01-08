@@ -13,9 +13,21 @@ cmake ..
 make
 ```
 
+## Installing Dependencies
+
+The dependencies are fairly trivial: libboost and libgtest for the test suite. You can install them on Ubuntu liike so:
+
+```sh
+sudo apt install libboost-dev
+sudo apt install libgtest-dev
+```
+
+Oddly, Ubuntu 18.04 (at least) only installs the source for Google Test. You'll still need to compile the library. See issue 10. 
+
 ## Test
 
 This repository has a handful of tests to ensure the message protocol implementation is correct. While I can't guarentee I've nailed it 100%, I'm pretty happy with it overall.
+
 
 ### Usage
 
