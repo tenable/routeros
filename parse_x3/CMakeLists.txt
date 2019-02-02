@@ -4,7 +4,7 @@ set(PROJECT_NAME x3_parse)
 
 project(${PROJECT_NAME})
 
-set(CMAKE_CXX_FLAGS "-s -O2 -Wall -Wextra -Weffc++ -Wshadow -Wcast-align -Wcast-qual -Woverloaded-virtual -Wstrict-null-sentinel -Wswitch-default -Winit-self -Wlogical-op -Wno-deprecated-declarations -Wshadow")
+set(CMAKE_CXX_FLAGS "-std=gnu++0x -s -O2 -Wall -Wextra -Weffc++ -Wshadow -Wcast-align -Wcast-qual -Woverloaded-virtual -Wstrict-null-sentinel -Wswitch-default -Winit-self -Wlogical-op -Wno-deprecated-declarations -Wshadow")
 
 find_package(Boost 1.58 COMPONENTS program_options system regex REQUIRED)
 
