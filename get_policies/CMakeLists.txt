@@ -5,7 +5,7 @@ option(test "Build all tests." OFF)
 set(PROJECT_NAME get_policies)
 project(${PROJECT_NAME})
 
-set(CMAKE_CXX_FLAGS "-g -Wall -Wextra -Weffc++ -Wshadow -Wcast-align -Wcast-qual -Woverloaded-virtual -Wstrict-null-sentinel -Wswitch-default -Winit-self -Wlogical-op -Wno-deprecated-declarations -Wshadow")
+set(CMAKE_CXX_FLAGS "-std=gnu++0x -g -Wall -Wextra -Weffc++ -Wshadow -Wcast-align -Wcast-qual -Woverloaded-virtual -Wstrict-null-sentinel -Wswitch-default -Winit-self -Wlogical-op -Wno-deprecated-declarations -Wshadow")
 
 find_package(Boost 1.58 COMPONENTS program_options system regex REQUIRED)
 
