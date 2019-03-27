@@ -18,7 +18,7 @@ make
 The dependencies are fairly trivial: libboost and libgtest for the test suite. You can install them on Ubuntu liike so:
 
 ```sh
-sudo apt install libboost-dev
+sudo apt install libboost-all-dev
 sudo apt install libgtest-dev
 ```
 
