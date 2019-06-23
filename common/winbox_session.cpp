@@ -144,21 +144,41 @@ bool Winbox_Session::send(const WinboxMessage& p_msg)
     std::string message("M2");
     message.append(serialized.data(), serialized.size());
 
-    std::string length;
-    length.push_back(message.size());
+    if (message.length() > 0xffff)
+    {
+        std::cerr << "Winbox message oversized" << std::endl;
+        return false;
+    }
+    boost::uint8_t msg_size[] = {
+        static_cast<boost::uint8_t>(message.length() >> 8),     // 0: upper byte
+        static_cast<boost::uint8_t>(message.length() & 0xff)    // 1: lower byte
+    };
 
     boost::asio::streambuf request;
     std::ostream request_stream(&request);
 
-    length[0] += 2;
-
-    request_stream << length;
-    request_stream << '\x01';
-    request_stream << '\x00';
-
-    length[0] -= 2;
-    request_stream << length;
-    request_stream << message;
+    if (message.length() < 0xfe)
+    {
+        request_stream << static_cast<boost::uint8_t>(msg_size[1] + 2);
+        request_stream << '\x01';
+        request_stream << msg_size[0] << msg_size[1];
+        request_stream << message;
+    }
+    else
+    {
+        request_stream << '\xff' << '\x01';
+        request_stream << msg_size[0] << msg_size[1];
+        request_stream << message.substr(0, 0xfd);              // 0xff-2, because we write 2 bytes above
+        for(size_t i = 0xfd; i < message.length(); i+=0xff)
+        {
+            boost::uint8_t remain;
+            if (message.length() - i > 0xff) remain = 0xff;
+            else remain = message.length() - i;
+            request_stream << remain << '\xff';
+            request_stream << message.substr(i, 0xff);
+            
+        }
+    }
 
     boost::asio::write(m_socket, request);
     return true;
