@@ -1,5 +1,5 @@
 /*
-  Copyright 2018 Tenable, Inc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                *
+  Copyright 2018-2019 Tenable, Inc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                *
 
   Redistribution and use in source and binary forms, with or without modification,
   are permitted provided that the following conditions are met:
@@ -35,6 +35,7 @@
 #include <boost/cstdint.hpp>
 
 #include "rc4.hpp"
+#include "session.hpp"
 
 class WinboxMessage;
 
@@ -51,7 +52,7 @@ class WinboxMessage;
  *
  * Sockets are blocking so some funniness can come of that.
  */
-class JSProxySession
+class JSProxySession : public Session
 {
 public:
 
@@ -66,7 +67,7 @@ public:
     /*!
      * Deconstructor attempts to close the socket if it hasn't been already
      */
-    ~JSProxySession();
+    virtual ~JSProxySession();
 
     /*!
      * Connects to the remote host.
@@ -84,6 +85,11 @@ public:
      * \param[in] p_password the password to use for log in
      */
     bool negotiateEncryption(const std::string& p_username, const std::string& p_password);
+
+
+    virtual bool send(const WinboxMessage& p_msg);
+
+    virtual bool receive(WinboxMessage& p_msg);
 
     /*!
      * Sends an encrypted message from Winbox format
@@ -155,12 +161,6 @@ private:
     bool recvMessage(std::string& p_message);
 
 private:
-
-    //! the IP addres this object will connect to
-    std::string m_ip;
-
-    //! the port this object will connect to
-    std::string m_port;
 
     //! the session ID that was assigned to this session
     std::string m_id;

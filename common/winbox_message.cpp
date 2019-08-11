@@ -116,7 +116,7 @@ std::string WinboxMessage::serialize_to_binary() const
         command.resize(4);
 
         boost::uint32_t type = it->first;
-        if (it->first)
+        if (it->second)
         {
             type |= variable_type::k_short_length;
         }
@@ -596,6 +596,13 @@ bool WinboxMessage::parse_binary(const std::string& p_input)
 {
     std::string input(p_input);
 
+    // if this starts out with M2 then the caller didn't trim the lead
+    // in M2 header. That's fine, just erase it.
+    if (input.size() > 2 && memcmp(input.data(), "M2", 2) == 0)
+    {
+        input.erase(0, 2);
+    }
+
     while (input.length() >= 4)
     {
         boost::uint32_t type_name = *reinterpret_cast<const boost::uint32_t*>(&input[0]);
@@ -1006,6 +1013,30 @@ bool WinboxMessage::parse_json(const std::string& p_input)
                     }
                 }
                 break;
+            case 'r':
+                {
+                    std::regex capture_string("^\\[([,0-9]+)\\]");
+                    std::smatch match;
+                    if (!std::regex_search(input, match, capture_string))
+                    {
+                        return false;
+                    }
+                    std::string full_match(match[0]);
+                    std::string value_string(match[1]);
+                    input.erase(0, full_match.size() - 1);
+
+                    std::vector<std::string> raw_chars;
+                    boost::split(raw_chars, value_string, boost::is_any_of(","));
+
+                    std::string result;
+                    for (std::size_t i = 0; i < raw_chars.size(); i++)
+                    {
+                        result.push_back((char)strtoul(raw_chars[i].c_str(), NULL, 10));
+                    }
+
+                    m_raw.insert(std::make_pair(variable, result));
+                }
+                break;
             case 's':
                 {
                     //TODO this is so far from perfect but good enough
@@ -1387,6 +1418,8 @@ std::vector<std::string> WinboxMessage::get_raw_array(boost::uint32_t p_name) co
 
 void WinboxMessage::set_to(boost::uint32_t p_to)
 {
+    m_u32_array.erase(variable_names::k_sys_to);
+
     std::vector<boost::uint32_t> to;
     to.push_back(p_to);
     add_u32_array(variable_names::k_sys_to, to);
@@ -1394,6 +1427,8 @@ void WinboxMessage::set_to(boost::uint32_t p_to)
 
 void WinboxMessage::set_to(boost::uint32_t p_to, boost::uint32_t p_handler)
 {
+    m_u32_array.erase(variable_names::k_sys_to);
+
     std::vector<boost::uint32_t> to;
     to.push_back(p_to);
     to.push_back(p_handler);
@@ -1422,12 +1457,12 @@ void WinboxMessage::set_session_id(boost::uint32_t p_session_id)
 
 void WinboxMessage::add_boolean(boost::uint32_t p_name, bool p_value)
 {
-    m_bools.insert(std::make_pair(p_name, p_value));
+    m_bools[p_name] = p_value;
 }
 
 void WinboxMessage::add_u32(boost::uint32_t p_name, boost::uint32_t p_value)
 {
-    m_u32s.insert(std::make_pair(p_name, p_value));
+    m_u32s[p_name] = p_value;
 }
 
 void WinboxMessage::add_u64(boost::uint32_t p_name, boost::uint64_t p_value)
@@ -1488,4 +1523,9 @@ void WinboxMessage::add_msg_array(boost::uint32_t p_name, const std::vector<Winb
 void WinboxMessage::add_raw_array(boost::uint32_t p_name, const std::vector<std::string>& p_value)
 {
     m_raw_array.insert(std::make_pair(p_name, p_value));
+}
+
+void WinboxMessage::erase_u32(boost::uint32_t p_name)
+{
+    m_u32s.erase(p_name);
 }

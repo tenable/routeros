@@ -7,15 +7,51 @@
 #include <iomanip>
 #include <cstring>
 #include <stdexcept>
-#include <boost/regex.hpp>
-#include <boost/lexical_cast.hpp>
+#include <boost/lambda/bind.hpp>
+#include <boost/lambda/lambda.hpp>
+
+namespace
+{
+    /*!
+     * Validates the first four bytes of the header. The first byte is the size of this chunk. The
+     * second byte indicates if there are more packets in this series. The third and fourth bytes
+     * are the total length.
+     * 
+     * \return 0 if failure and the length we need to read otherwise
+     */
+    boost::uint32_t parse_header(const std::string& p_header)
+    {
+        if (p_header.size() != 4)
+        {
+            return 0;
+        }
+
+        boost::uint8_t short_length = p_header[0];
+        boost::uint16_t long_length = ntohs(*reinterpret_cast<const boost::uint16_t*>(&p_header[2]));
+
+        if (short_length == 0xff)
+        {
+            return long_length;
+        }
+
+        if ((short_length - 2) != long_length)
+        {
+            std::cerr <<  std::hex << "Length mismatch. " << (short_length -2) << " != " << long_length << std::endl;
+            return 0;
+        }
+
+        return long_length;
+    }
+}
 
 Winbox_Session::Winbox_Session(const std::string& p_ip, const std::string& p_port) :
-    m_ip(p_ip),
-    m_port(p_port),
+    Session(p_ip, p_port),
     m_io_service(),
-    m_socket(m_io_service)
+    m_socket(m_io_service),
+    m_deadline(m_io_service)
 {
+    m_deadline.expires_at(boost::posix_time::pos_infin);
+    check_deadline();
 }
 
 Winbox_Session::~Winbox_Session()
@@ -34,12 +70,26 @@ bool Winbox_Session::connect()
 {
     try
     {
-        boost::asio::ip::tcp::resolver resolver(m_io_service);
-        boost::asio::connect(m_socket, resolver.resolve({m_ip.c_str(), m_port.c_str()}));
+        boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string(m_ip), atoi(m_port.c_str()));
+
+        // set a 2 second deadline for the connection   
+        boost::system::error_code ec = boost::asio::error::would_block;
+        m_deadline.expires_from_now(boost::posix_time::seconds(2));
+        m_socket.async_connect(endpoint, boost::lambda::var(ec) = boost::lambda::_1);
+
+        do
+        {
+            m_io_service.run_one();
+        }
+        while (ec == boost::asio::error::would_block);
+
+        if (ec || !m_socket.is_open())
+        {
+           return false;
+        }
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << std::endl;
         return false;
     }
     return true;
@@ -49,33 +99,16 @@ bool Winbox_Session::login(const std::string& p_username, const std::string& p_p
 {
     WinboxMessage msg;
 
-    if (p_session_id == 0)
-    {
-        msg.set_to(2, 2);
-        msg.set_command(7);
-        msg.set_request_id(1);
-        msg.set_reply_expected(true);
-        msg.add_string(1, "list");
-        send(msg);
-
-        msg.reset();
-        if (!receive(msg) || msg.has_error())
-        {
-            std::cerr << msg.get_error_string() << std::endl;
-            return false;
-        }
-
-        p_session_id = msg.get_session_id();
-    }
-
     // request the challenge
-    msg.reset();
     msg.set_to(13, 4);
     msg.set_command(4);
     msg.set_request_id(2);
     msg.set_session_id(p_session_id);
     msg.set_reply_expected(true);
-    send(msg);
+    if (!send(msg))
+    {
+        return false;
+    }
 
     msg.reset();
     if (!receive(msg) || msg.has_error())
@@ -118,7 +151,10 @@ bool Winbox_Session::login(const std::string& p_username, const std::string& p_p
     msg.add_string(1, p_username);
     msg.add_raw(9, salt);
     msg.add_raw(10, hashed);
-    send(msg);
+    if (!send(msg))
+    {
+        return false;
+    }
 
     msg.reset();
     if (!receive(msg))
@@ -132,6 +168,8 @@ bool Winbox_Session::login(const std::string& p_username, const std::string& p_p
         std::cerr << msg.get_error_string() << std::endl;
         return false;
     }
+
+    p_session_id = msg.get_session_id();
 
     return true;
 }
@@ -149,7 +187,9 @@ bool Winbox_Session::send(const WinboxMessage& p_msg)
         std::cerr << "Winbox message oversized" << std::endl;
         return false;
     }
-    boost::uint8_t msg_size[] = {
+
+    boost::uint8_t msg_size[] =
+    {
         static_cast<boost::uint8_t>(message.length() >> 8),     // 0: upper byte
         static_cast<boost::uint8_t>(message.length() & 0xff)    // 1: lower byte
     };
@@ -175,20 +215,42 @@ bool Winbox_Session::send(const WinboxMessage& p_msg)
             if (message.length() - i > 0xff) remain = 0xff;
             else remain = message.length() - i;
             request_stream << remain << '\xff';
-            request_stream << message.substr(i, 0xff);
-            
+            request_stream << message.substr(i, 0xff);   
         }
     }
 
-    boost::asio::write(m_socket, request);
+    try
+    {
+        // convert to async with timer
+        boost::asio::write(m_socket, request);
+    }
+    catch(const std::exception&)
+    {
+        return false;
+    }
+
     return true;
 }
 
 bool Winbox_Session::receive(WinboxMessage& p_msg)
 {
+    boost::system::error_code ec = boost::asio::error::would_block;
+    m_deadline.expires_from_now(boost::posix_time::seconds(2));
+
     // read in the the header
     boost::asio::streambuf response;
-    boost::asio::read(m_socket, response, boost::asio::transfer_exactly(4));
+    boost::asio::async_read(m_socket, response, boost::asio::transfer_exactly(4), boost::lambda::var(ec) = boost::lambda::_1);
+    do
+    {
+        m_io_service.run_one();
+    }
+    while (ec == boost::asio::error::would_block);
+
+    if (ec)
+    {
+        return false;
+    }
+
     std::string header;
     header.assign(std::istreambuf_iterator<char>(&response), std::istreambuf_iterator<char>());
     response.consume(4);
@@ -197,7 +259,7 @@ bool Winbox_Session::receive(WinboxMessage& p_msg)
     boost::uint32_t to_read = parse_header(header);
     if (to_read == 0)
     {
-        std::cerr << "Failed header parsing" << std::endl;
+        //std::cerr << "Failed header parsing" << std::endl;
         return false;
     }
 
@@ -225,7 +287,7 @@ bool Winbox_Session::receive(WinboxMessage& p_msg)
         // ensure pad bytes are there
         if (static_cast<unsigned char>(step_chars[1]) != 0xff)
         {
-            std::cerr << "Padding error." << std::endl;
+            //std::cerr << "Padding error." << std::endl;
             return false;
         }
     }
@@ -242,26 +304,15 @@ bool Winbox_Session::receive(WinboxMessage& p_msg)
     return true;
 }
 
-boost::uint32_t Winbox_Session::parse_header(const std::string& p_header)
+void Winbox_Session::check_deadline()
 {
-    if (p_header.size() != 4)
+    if (m_deadline.expires_at() <= boost::asio::deadline_timer::traits_type::now())
     {
-        return 0;
+      boost::system::error_code ignored_ec;
+      m_socket.close(ignored_ec);
+      m_deadline.expires_at(boost::posix_time::pos_infin);
     }
 
-    boost::uint8_t short_length = p_header[0];
-    boost::uint16_t long_length = ntohs(*reinterpret_cast<const boost::uint16_t*>(&p_header[2]));
-
-    if (short_length == 0xff)
-    {
-        return long_length;
-    }
-
-    if ((short_length - 2) != long_length)
-    {
-        std::cerr <<  std::hex << "Length mismatch. " << (short_length -2) << " != " << long_length << std::endl;
-        return 0;
-    }
-
-    return long_length;
+    // Put the actor back to sleep.
+    m_deadline.async_wait(boost::lambda::bind(&Winbox_Session::check_deadline, this));
 }

@@ -236,8 +236,7 @@ namespace
 }
 
 JSProxySession::JSProxySession(const std::string& p_ip, const std::string& p_port) :
-    m_ip(p_ip),
-    m_port(p_port),
+    Session(p_ip, p_port),
     m_id(),
     m_sequence(1),
     m_io_service(),
@@ -290,21 +289,42 @@ bool JSProxySession::negotiateEncryption(const std::string& p_username, const st
     std::size_t index = 0;
     for (std::size_t i = 0; i < 4; i++)
     {
-        int codePoint = codePointAt(message, index) & 0xff;
-        m_id.push_back(codePoint);
+        try
+        {
+            int codePoint = codePointAt(message, index) & 0xff;
+            m_id.push_back(codePoint);
+        }
+        catch(const std::exception&)
+        {
+            return false;
+        }
     }
 
     for (std::size_t i = 0; i < 4; i++)
     {
-        codePointAt(message, index);
+        try
+        {
+            codePointAt(message, index);
+        }
+        catch(const std::exception&)
+        {
+            return false;
+        }
     }
 
     // extract the 16 byte challenge
     std::string rchallenge;
     for ( ; index < message.length(); )
     {
-        int codePoint = codePointAt(message, index) & 0xff;
-        rchallenge.push_back(codePoint);
+        try
+        {
+            int codePoint = codePointAt(message, index) & 0xff;
+            rchallenge.push_back(codePoint);
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
     }
 
     if (rchallenge.size() != 16)
@@ -317,7 +337,16 @@ bool JSProxySession::negotiateEncryption(const std::string& p_username, const st
     std::string challengeHash(createChallengeHash(rchallenge, p_username));
 
     // generate the password hashes
-    std::string pwdHash(MD4::md4(weirdPasswordThing(p_password)));
+    std::string pwdHash;
+    try
+    {
+        pwdHash.assign(MD4::md4(weirdPasswordThing(p_password)));
+    }
+    catch(const std::exception&)
+    {
+       return false;
+    }
+
     std::string pwdHashHash(MD4::md4(pwdHash));
 
     // generate the challenge response
@@ -333,7 +362,7 @@ bool JSProxySession::negotiateEncryption(const std::string& p_username, const st
     sendMessage(final);
 
     WinboxMessage msg;
-    if (!recvEncrypted(msg))
+    if (!recvEncrypted(msg) || msg.get_u32_array(0xff0001).empty())
     {
         std::cerr << "Failed to receive the challenge" << std::endl;
         return false;
@@ -451,6 +480,19 @@ bool JSProxySession::recvMessage(std::string& p_message)
         return false;
     }
     return true;
+}
+
+bool JSProxySession::send(const WinboxMessage& p_msg)
+{
+    // wrapper around send encrypted
+    sendEncrypted(p_msg);
+    return true;
+}
+
+bool JSProxySession::receive(WinboxMessage& p_msg)
+{
+    // wrapper around recv encrypted
+    return recvEncrypted(p_msg);
 }
 
 void JSProxySession::sendEncrypted(const WinboxMessage& p_message)
@@ -646,22 +688,43 @@ bool JSProxySession::recvEncrypted(WinboxMessage& p_message)
     std::string id;
     for (std::size_t i = 0; i < 4; i++)
     {
-        int codePoint = codePointAt(message, index);
-        id.push_back(codePoint);
+        try
+        {
+            int codePoint = codePointAt(message, index);
+            id.push_back(codePoint);
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
     }
 
     std::string sequence;
     for (std::size_t i = 0; i < 4; i++)
     {
-        int codePoint = codePointAt(message, index);
-        sequence.push_back(codePoint);
+        try
+        {
+            int codePoint = codePointAt(message, index);
+            sequence.push_back(codePoint);
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
     }
 
     std::string converted;
     for ( ; index < message.length(); )
     {
-        int codePoint = codePointAt(message, index) & 0xff;
-        converted.push_back(codePoint);
+        try
+        {       
+            int codePoint = codePointAt(message, index) & 0xff;
+            converted.push_back(codePoint);
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
     }
 
     message.assign(m_rx.decrypt(converted, 0));

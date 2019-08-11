@@ -1,5 +1,5 @@
 /*
-  Copyright 2018 Tenable, Inc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                *
+  Copyright 2018-2019 Tenable, Inc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                *
 
   Redistribution and use in source and binary forms, with or without modification,
   are permitted provided that the following conditions are met:
@@ -33,6 +33,8 @@
 #include <string>
 #include <boost/asio.hpp>
 
+#include "session.hpp"
+
 class WinboxMessage;
 
 /*!
@@ -43,30 +45,30 @@ class WinboxMessage;
  * also serialize the message into the binary format as well as the JSON format
  * (although the JSON version is not perfect).
  */
-class Winbox_Session
+class Winbox_Session : public Session
 {
 
 public:
     Winbox_Session(const std::string& p_ip, const std::string& p_port);
-    ~Winbox_Session();
+    virtual ~Winbox_Session();
 
     bool connect();
     bool login(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id);
 
-    bool send(const WinboxMessage& p_msg);
-    bool receive(WinboxMessage& p_msg);
-
-    boost::uint32_t parse_header(const std::string& p_header);
+    virtual bool send(const WinboxMessage& p_msg);
+    virtual bool receive(WinboxMessage& p_msg);
 
 private:
 
-    std::string m_ip;
+    void check_deadline();
 
-    std::string m_port;
+private:
 
     boost::asio::io_service m_io_service;
 
     boost::asio::ip::tcp::socket m_socket;
+
+    boost::asio::deadline_timer m_deadline;
 };
 
 #endif
