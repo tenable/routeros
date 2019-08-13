@@ -15,6 +15,15 @@ Great question! I do this:
 ```sh
 mksquashfs ./_1000.squashfs.extracted/squashfs-root/ lol.squashfs -comp xz -b 262144 -all-root
 ```
+## Whoah buddy. This is complicated. Is there any sample usage?
+
+Sure!
+
+```sh
+albinolobster@ubuntu:~/routeros/modify_npk/build$ ./modify_npk -n wrasse -s ~/packages/6.41.4/_dude-6.41.4.npk.extracted/wrasse.squashfs -f ~/packages/6.41.4/dude-6.41.4.npk 
+albinolobster@ubuntu:~/routeros/modify_npk/build$ ls -l wrasse.npk 
+-rw-r--r-- 1 albinolobster albinolobster 8273 Aug 13 17:00 wrasse.npk
+```
 
 ## Are there side affects?
 
