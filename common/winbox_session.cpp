@@ -45,54 +45,13 @@ namespace
 }
 
 Winbox_Session::Winbox_Session(const std::string& p_ip, const std::string& p_port) :
-    Session(p_ip, p_port),
-    m_io_service(),
-    m_socket(m_io_service),
-    m_deadline(m_io_service)
+    Session(p_ip, p_port)
+
 {
-    m_deadline.expires_at(boost::posix_time::pos_infin);
-    check_deadline();
 }
 
 Winbox_Session::~Winbox_Session()
 {
-    try
-    {
-        m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-        m_socket.close();
-    }
-    catch (...)
-    {
-    }
-}
-
-bool Winbox_Session::connect()
-{
-    try
-    {
-        boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string(m_ip), atoi(m_port.c_str()));
-
-        // set a 2 second deadline for the connection   
-        boost::system::error_code ec = boost::asio::error::would_block;
-        m_deadline.expires_from_now(boost::posix_time::seconds(2));
-        m_socket.async_connect(endpoint, boost::lambda::var(ec) = boost::lambda::_1);
-
-        do
-        {
-            m_io_service.run_one();
-        }
-        while (ec == boost::asio::error::would_block);
-
-        if (ec || !m_socket.is_open())
-        {
-           return false;
-        }
-    }
-    catch(const std::exception& e)
-    {
-        return false;
-    }
-    return true;
 }
 
 bool Winbox_Session::login(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id)
@@ -304,15 +263,3 @@ bool Winbox_Session::receive(WinboxMessage& p_msg)
     return true;
 }
 
-void Winbox_Session::check_deadline()
-{
-    if (m_deadline.expires_at() <= boost::asio::deadline_timer::traits_type::now())
-    {
-      boost::system::error_code ignored_ec;
-      m_socket.close(ignored_ec);
-      m_deadline.expires_at(boost::posix_time::pos_infin);
-    }
-
-    // Put the actor back to sleep.
-    m_deadline.async_wait(boost::lambda::bind(&Winbox_Session::check_deadline, this));
-}

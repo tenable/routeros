@@ -138,7 +138,7 @@ int main(int p_argc, const char** p_argv)
         msg.set_command(1);
         msg.add_boolean(1, true);
 
-        jsSession.sendEncrypted(msg);
+        jsSession.sendEncrypted(msg, false);
 
         sleep(30);
     }

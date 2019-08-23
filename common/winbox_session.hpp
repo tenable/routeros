@@ -31,7 +31,6 @@
 #define WINBOX_SESSION_HPP
 
 #include <string>
-#include <boost/asio.hpp>
 
 #include "session.hpp"
 
@@ -52,23 +51,10 @@ public:
     Winbox_Session(const std::string& p_ip, const std::string& p_port);
     virtual ~Winbox_Session();
 
-    bool connect();
     bool login(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id);
 
     virtual bool send(const WinboxMessage& p_msg);
     virtual bool receive(WinboxMessage& p_msg);
-
-private:
-
-    void check_deadline();
-
-private:
-
-    boost::asio::io_service m_io_service;
-
-    boost::asio::ip::tcp::socket m_socket;
-
-    boost::asio::deadline_timer m_deadline;
 };
 
 #endif

@@ -1,6 +1,6 @@
 # JSProxy PCAP Password Bruteforce
 
-Given a PCAP and a password list, this project will try to brute force the password of an observed web login.
+Given a PCAP and a password list, this project will try to brute force the password of an observed web login. Note that this can only work on webfig versions through 6.42.x. The login algorithms were changed in 6.43.
 
 ## Compilation
 This code was tested on Ubuntu 18.04. There is a dependency on boost and cmake. Simply install them like so:

@@ -1,6 +1,6 @@
 # JSProxy PCAP Parser
 
-JSProxy PCAP Parser can parse a PCAP parser session out of a pcap, decrypts it, and spits it out as JSON on the command line.
+JSProxy PCAP Parser can parse a PCAP parser session out of a pcap, decrypts it, and spits it out as JSON on the command line. Note that this can only work on webfig versions through 6.42.x. The login algorithms were changed in 6.43.
 
 ## Compilation
 This code was tested on Ubuntu 18.04. There is a dependency on boost and cmake. Simply install them like so:

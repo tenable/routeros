@@ -325,26 +325,5 @@ bool Sploit::do_hf_tracefile()
         return false;
     }
 
-    std::cout << "[+] Looping until we get a telnet prompt. Good luck!" << std::endl;
-    bool found_telnet_prompt = false;
-    while (!found_telnet_prompt)
-    {
-        if (!do_recv(m_session, msg))
-        {
-            return false;
-        }
-
-        std::cout << "[+] ... " << std::endl;
-
-        if (!msg.get_raw(0x02).empty())
-        {
-            std::string raw_payload(msg.get_raw(0x02));
-            if (raw_payload.find("telnet> ") != std::string::npos)
-            {
-                std::cout << "[+] Got a telnet prompt!" << std::endl;
-                found_telnet_prompt = true;
-            }
-        }
-    }
     return true;
 }

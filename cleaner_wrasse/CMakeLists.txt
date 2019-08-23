@@ -20,6 +20,7 @@ add_executable(${PROJECT_NAME}
                 ../common/rc4.cpp
                 ../common/des.cpp
                 ../common/md5.cpp
+                ../common/curve25519-donna.cpp
                 ../common/session.cpp
                 ../common/winbox_session.cpp
                 ../common/winbox_message.cpp

@@ -106,7 +106,7 @@ int main(int p_argc, const char** p_argv)
     msg.set_request_id(1);
     msg.set_reply_expected(true);
     msg.add_string(1, "//./.././.././.././../etc/passwd");
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
     msg.reset();
 
     if (!jsSession.recvEncrypted(msg))
@@ -136,7 +136,7 @@ int main(int p_argc, const char** p_argv)
     msg.set_reply_expected(true);
     msg.set_session_id(sessionID);
     msg.add_u32(2, file_size);
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
 
     msg.reset();
     if (!jsSession.recvEncrypted(msg))

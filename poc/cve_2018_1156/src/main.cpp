@@ -125,7 +125,7 @@ int main(int p_argc, const char** p_argv)
 
     if (!jsSession.negotiateEncryption(username, password))
     {
-        std::cerr << "Encryption neogitiation failed." << std::endl;
+        std::cerr << "Encryption negotiation failed." << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -146,7 +146,7 @@ int main(int p_argc, const char** p_argv)
     msg.add_u32(3, 1);
     msg.add_u32(6, 1);
 
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
     msg.reset();
 
     jsSession.recvEncrypted(msg);

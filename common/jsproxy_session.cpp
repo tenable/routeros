@@ -7,11 +7,14 @@
 #include <arpa/inet.h>
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/lambda/bind.hpp>
+#include <boost/lambda/lambda.hpp>
 
 #include "md4.hpp"
 #include "des.hpp"
 #include "sha1.hpp"
 #include "winbox_message.hpp"
+#include "curve25519-donna.hpp"
 
 namespace
 {
@@ -233,98 +236,209 @@ namespace
         final.append(p_username);
         return final;
     }
+
+    /*!
+     * When ROS sends text/plain payloads, then the payload is json encoded with javascript madness. This
+     * function will strip away the encoding and seperate the message into its individual parts:
+     * [4 bytes id] [4 bytes seq] [n payload]
+     *
+     * \param[in] p_input the data to shove through the codePointAt logic and pull out the individual parts
+     * \param[in,out] p_id the id we extract from p_input (four bytes)
+     * \param[in,out] p_seq the seq we extract from p_input (four bytes)
+     * \param[in,out] p_payload the payload we extract from p_input (the remaining data)
+     */
+    bool read_js_encoded_message(const std::string& p_input, std::string& p_id, std::string& p_seq, std::string& p_payload)
+    {
+        std::size_t index = 0;
+        for (std::size_t i = 0; i < 4; i++)
+        {
+            try
+            {
+                int codePoint = codePointAt(p_input, index) & 0xff;
+                p_id.push_back(codePoint);
+            }
+            catch(const std::exception&)
+            {
+                return false;
+            }
+        }
+
+        // sequence numbers. we don't really care.
+        for (std::size_t i = 0; i < 4; i++)
+        {
+            try
+            {
+                int codePoint = codePointAt(p_input, index);
+                p_seq.push_back(codePoint);
+            }
+            catch(const std::exception&)
+            {
+                return false;
+            }
+        }
+
+        // extract the remainder
+        for ( ; index < p_input.length(); )
+        {
+            try
+            {
+                int codePoint = codePointAt(p_input, index) & 0xff;
+                p_payload.push_back(codePoint);
+            }
+            catch (const std::exception&)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 JSProxySession::JSProxySession(const std::string& p_ip, const std::string& p_port) :
     Session(p_ip, p_port),
     m_id(),
     m_sequence(1),
-    m_io_service(),
-    m_socket(m_io_service),
     m_rx(),
-    m_tx()
+    m_tx(),
+    m_pub_key(),
+    m_priv_key()
 {
+    // generate a priv/pub key pair
+    srand(time(NULL));
+    for (std::size_t i = 0; i < m_priv_key.size(); i++)
+    {
+        m_priv_key[i] = (rand() % 256);
+    }
+
+    // very very oddly, MT's implementation reverses their keys. See:
+    // https://github.com/rev22/curve255js/issues/4#issuecomment-513459563
+    std::reverse(m_priv_key.begin(), m_priv_key.end());
+
+    static const boost::uint8_t basepoint[32] = {9};
+    curve25519_donna(&m_pub_key[0], &m_priv_key[0], basepoint);
 }
 
 JSProxySession::~JSProxySession()
 {
-    try
-    {
-        m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-        m_socket.close();
-    }
-    catch (...)
-    {
-    }
-}
-
-bool JSProxySession::connect()
-{
-    try
-    {
-        boost::asio::ip::tcp::resolver resolver(m_io_service);
-        boost::asio::connect(m_socket, resolver.resolve({m_ip.c_str(), m_port.c_str()}));
-    }
-    catch(const std::exception& e)
-    {
-        std::cerr << e.what() << std::endl;
-        return false;
-    }
-    return true;
 }
 
 bool JSProxySession::negotiateEncryption(const std::string& p_username, const std::string& p_password)
 {
-    // send a POST request to the device in order to obtain the challenge
+    // so this is kind of annoying. Depending on the version, RouterOS either wants an empty post or
+    // a post containing our public key. My goal for this library is to support backwards compatiblity.
+    // as such this is what we'll do:
+    // 1. Try an empty post. If that works - awesome!
+    // 2. If not, disconnect / reconnect
+    // 3. Send a the public key.
+    // 4. If that fails then I don't know wtf.
+
+    // send an empty POST request to the device in order to obtain the challenge
     std::string message;
-    sendMessage(message);
- 
-    if (!recvMessage(message))
+    if (!sendMessage(message, false))
     {
-        std::cerr << "Failed to receive the challenge" << std::endl;
+        return false;
+    }
+ 
+    bool p_binaryFormat = false;
+    if (!recvMessage(message, p_binaryFormat))
+    {
+        // the empty post didn't work. Try a post with the public key
+        close();
+        if (!connect())
+        {
+            return false;
+        }
+        return doPublicKey(p_username, p_password);
+    }
+
+    return doMSCHAPv2(message, p_username, p_password);
+}
+
+bool JSProxySession::doPublicKey(const std::string& p_username, const std::string& p_password)
+{
+    std::string pubkey_msg;
+
+    // first 8 bytes are all set to 0.
+    for (std::size_t i = 0; i < 8; i++)
+    {
+        pubkey_msg.push_back('\x00');
+    }
+
+    // remaining 32 bytes are our public key (in reverse order...)
+    for (int i = m_pub_key.size(); i > 0; i--)
+    {
+        pubkey_msg.push_back(m_pub_key[i - 1]);
+    }
+
+    // convert into javascript nonsense and send it off
+    sendMessage(fromCharCode(pubkey_msg), false);
+
+    // Get their pub key in response
+    std::string pub_key_response;
+    bool p_binaryFormat = false;
+    if (!recvMessage(pub_key_response, p_binaryFormat))
+    {
         return false;
     }
 
-    // First four bytes are ID
-    std::size_t index = 0;
-    for (std::size_t i = 0; i < 4; i++)
+    if (pub_key_response.size() < 40)
     {
-        try
-        {
-            int codePoint = codePointAt(message, index) & 0xff;
-            m_id.push_back(codePoint);
-        }
-        catch(const std::exception&)
-        {
-            return false;
-        }
+        return false;
     }
 
-    for (std::size_t i = 0; i < 4; i++)
+    m_id.clear();
+    std::string seq; // don't actually care
+    std::string server_pubkey;
+    if (!read_js_encoded_message(pub_key_response, m_id, seq, server_pubkey))
     {
-        try
-        {
-            codePointAt(message, index);
-        }
-        catch(const std::exception&)
-        {
-            return false;
-        }
+        return false;
     }
 
-    // extract the 16 byte challenge
+    if (server_pubkey.size() != 32)
+    {
+        return false;
+    }
+
+    // again, we need to reverse the key
+    std::reverse(server_pubkey.begin(), server_pubkey.end());
+
+    // generate the session key
+    std::array<boost::uint8_t, 32> session_key = { 0 };
+    curve25519_donna(&session_key[0], &m_priv_key[0], reinterpret_cast<const boost::uint8_t*>(&server_pubkey[0]));
+
+    // ...of course we have to reverse the session key too.
+    std::reverse(session_key.begin(), session_key.end());
+
+    std::string masterKey(reinterpret_cast<const char*>(&session_key[0]), session_key.size());
+    for (int i = 0; i < 40; ++i)
+    {
+        masterKey.push_back(0);
+    }
+
+    seedRC4(masterKey, false);
+    seedRC4(masterKey, true);
+
+    WinboxMessage win_msg;
+    win_msg.add_string(1, p_username);
+    win_msg.add_string(3, p_password);
+    if (!sendEncrypted(win_msg, true))
+    {
+        return false;
+    }
+
+    win_msg.reset();
+    return recvEncrypted(win_msg);
+}
+
+bool JSProxySession::doMSCHAPv2(const std::string& p_serverResponse, const std::string& p_username, const std::string& p_password)
+{
+    m_id.clear();
+    std::string seq; // don't actually care
     std::string rchallenge;
-    for ( ; index < message.length(); )
+    if (!read_js_encoded_message(p_serverResponse, m_id, seq, rchallenge))
     {
-        try
-        {
-            int codePoint = codePointAt(message, index) & 0xff;
-            rchallenge.push_back(codePoint);
-        }
-        catch (const std::exception&)
-        {
-            return false;
-        }
+        return false;
     }
 
     if (rchallenge.size() != 16)
@@ -359,12 +473,12 @@ bool JSProxySession::negotiateEncryption(const std::string& p_username, const st
     std::string final(generateMsgResponse(response, m_id, rchallenge, p_username));
 
     // send the challenge response
-    sendMessage(final);
+    sendMessage(final, false);
 
     WinboxMessage msg;
     if (!recvEncrypted(msg) || msg.get_u32_array(0xff0001).empty())
     {
-        std::cerr << "Failed to receive the challenge" << std::endl;
+        std::cerr << "Error receiving or decrypting the challenge: " << msg.serialize_to_json() << std::endl;
         return false;
     }
 
@@ -387,30 +501,81 @@ void JSProxySession::generateMasterKey(const std::string& p_pwdHashHash, const s
         masterKey.push_back(0);
     }
 
-    std::string server_key(masterKey);
-    server_key.append("On the client side, this is the receive key; on the server side, it is the send key.");
-    for (int i = 0; i < 40; ++i)
-    {
-        server_key.push_back(0xf2);
-    }
-    unsigned char serversha[20] = { 0 };
-    sha1::calc(server_key.data(), server_key.size(), serversha);
-    server_key.assign((char*)serversha, 16);
-    m_rx.setKey(server_key);
-
-    std::string client_key(masterKey);
-    client_key.append("On the client side, this is the send key; on the server side, it is the receive key.");
-    for (int i = 0; i < 40; ++i)
-    {
-        client_key.push_back(0xf2);
-    }
-    unsigned char clientsha[20] = { 0 };
-    sha1::calc(client_key.data(), client_key.size(), clientsha);
-    client_key.assign((char*)clientsha, 16);
-    m_tx.setKey(client_key);
+    seedRC4(masterKey, false);
+    seedRC4(masterKey, true);
 }
 
-void JSProxySession::sendMessage(const std::string& p_message)
+void JSProxySession::seedRC4(const std::string& p_masterKey, bool p_client)
+{
+    std::string key(p_masterKey);
+    if (p_client)
+    {
+        key.append("On the client side, this is the send key; on the server side, it is the receive key.");
+    }
+    else
+    {
+        key.append("On the client side, this is the receive key; on the server side, it is the send key.");
+    }
+
+    for (int i = 0; i < 40; ++i)
+    {
+        key.push_back(0xf2);
+    }
+
+    unsigned char sha[20] = { 0 };
+    sha1::calc(key.data(), key.size(), sha);
+    key.assign((char*)sha, 16);
+
+    if (p_client)
+    {
+        m_tx.setKey(key);
+    }
+    else 
+    {
+        m_rx.setKey(key);
+    }
+}
+
+void JSProxySession::create_message(std::string& p_message, const std::string& p_payload, bool p_binaryFormat, bool p_encrypt)
+{
+    // create the preamble first: [4 bytes id][4 bytes seq]
+    p_message.assign(m_id);
+    p_message.resize(8, 0);
+    boost::uint32_t reversed = ntohl(m_sequence);
+    memcpy(const_cast<char*>(p_message.data()) + 4, &reversed, 4);
+
+    // add the padding to the payload
+    std::string payload;
+    if (p_binaryFormat)
+    {
+        payload.assign("M2");
+    }
+    payload.append(p_payload);
+    payload.append(s_padding);
+
+    // increment the sequence number for next time
+    m_sequence += payload.size();
+
+    if (p_encrypt)
+    {
+        p_message.append(m_tx.decrypt(payload, 0));
+    }
+    else 
+    {
+        p_message.append(payload);
+    }
+
+    if (p_binaryFormat)
+    {
+        // no need to do anything else
+        return;
+    }
+
+    std::string final(fromCharCode(p_message));
+    p_message.assign(final);
+}
+
+bool JSProxySession::sendMessage(const std::string& p_message, bool p_binaryFormat)
 {
     boost::uint32_t message_length = p_message.size();
 
@@ -420,15 +585,23 @@ void JSProxySession::sendMessage(const std::string& p_message)
     request_stream << "POST /jsproxy HTTP/1.1\r\n";
     request_stream << "Host: " << m_ip << ":" << m_port << "\r\n";
     request_stream << "Content-Length: " << message_length << "\r\n";
-    request_stream << "Content-Type: text/plain;charset=UTF-8\r\n";
+    if (p_binaryFormat)
+    {
+        request_stream << "Content-Type: msg\r\n";
+    }
+    else
+    {
+        request_stream << "Content-Type: text/plain;charset=UTF-8\r\n";
+    }
     request_stream << "Accept: */*\r\n";
     request_stream << "Connection: keep-alive\r\n\r\n";
     request_stream << p_message;
 
     boost::asio::write(m_socket, request);
+    return true;
 }
 
-bool JSProxySession::recvMessage(std::string& p_message)
+bool JSProxySession::recvMessage(std::string& p_message, bool& p_binaryFormat)
 {
     // read until the end of the HTTP header
     boost::asio::streambuf response;
@@ -448,7 +621,8 @@ bool JSProxySession::recvMessage(std::string& p_message)
     std::stringstream headerstream(http_header);
     response.consume(amount_read);
 
-    // extract the content length
+    // extract the content length and the content type. The server supports
+    // two types: text/plain (json format) and msg (binary format).
     boost::uint32_t length = 0;
     std::string http_response;
     while (std::getline(headerstream, http_response))
@@ -458,6 +632,10 @@ bool JSProxySession::recvMessage(std::string& p_message)
         if (boost::regex_search(http_response, what, content_length))
         {
             length = boost::lexical_cast<boost::uint32_t>(what[1]);
+        }
+        else if (http_response.find("Content-Type: msg") == 0)
+        {
+            p_binaryFormat = true;
         }
     }
 
@@ -473,10 +651,8 @@ bool JSProxySession::recvMessage(std::string& p_message)
 
     boost::asio::read(m_socket, response, boost::asio::transfer_exactly(length));
     p_message.assign(std::istreambuf_iterator<char>(&response), std::istreambuf_iterator<char>());
-
     if (http_header.find("500 Internal Server Error") != std::string::npos)
     {
-        std::cerr << "Server replied with 500." << std::endl;
         return false;
     }
     return true;
@@ -485,8 +661,7 @@ bool JSProxySession::recvMessage(std::string& p_message)
 bool JSProxySession::send(const WinboxMessage& p_msg)
 {
     // wrapper around send encrypted
-    sendEncrypted(p_msg);
-    return true;
+    return sendEncrypted(p_msg, true);
 }
 
 bool JSProxySession::receive(WinboxMessage& p_msg)
@@ -495,85 +670,30 @@ bool JSProxySession::receive(WinboxMessage& p_msg)
     return recvEncrypted(p_msg);
 }
 
-void JSProxySession::sendEncrypted(const WinboxMessage& p_message)
+bool JSProxySession::sendEncrypted(const WinboxMessage& p_message, bool p_binaryFormat)
 {
-    // create the preamble
-    std::string preamble(m_id);
-    preamble.resize(8, 0);
-    boost::uint32_t reversed = ntohl(m_sequence);
-    memcpy(const_cast<char*>(preamble.data()) + 4, &reversed, 4);
-
-    std::string message(p_message.serialize_to_json());
-    message.append(s_padding);
-
-    // increment the sequence number for next time
-    m_sequence += (message.length());
-
-    // encrypt
-    std::string encrypted(m_tx.decrypt(message, 0));
-
-    preamble.append(encrypted);
-
-    // funkify
-    std::string final(fromCharCode(preamble));
-
-    sendMessage(final);
+    std::string outgoing;
+    create_message(outgoing, p_binaryFormat ? p_message.serialize_to_binary() : p_message.serialize_to_json(), p_binaryFormat, true);
+    return sendMessage(outgoing, p_binaryFormat);
 }
 
-void JSProxySession::sendEncrypted(const std::string& p_message)
+bool JSProxySession::sendEncrypted(const std::string& p_message, bool p_binaryFormat)
 {
-    // create the preamble
-    std::string preamble(m_id);
-    preamble.resize(8, 0);
-    boost::uint32_t reversed = ntohl(m_sequence);
-    memcpy(const_cast<char*>(preamble.data()) + 4, &reversed, 4);
-
-    std::string message(p_message);
-    message.append(s_padding);
-
-    // increment the sequence number for next time
-    m_sequence += (message.length());
-
-    // encrypt
-    std::string encrypted(m_tx.decrypt(message, 0));
-
-    preamble.append(encrypted);
-
-    // funkify
-    std::string final(fromCharCode(preamble));
-
-    sendMessage(final);
+    std::string outgoing;
+    create_message(outgoing, p_message, p_binaryFormat, true);
+    return sendMessage(outgoing, p_binaryFormat);
 }
 
 bool JSProxySession::getFile(const std::string& p_fileName, std::string& p_response)
 {
-    // create the preamble
-    std::string preamble(m_id);
-    preamble.resize(8, 0);
-    boost::uint32_t reversed = ntohl(m_sequence);
-    memcpy(const_cast<char*>(preamble.data()) + 4, &reversed, 4);
-
-    // increment the sequence number for next time
-    m_sequence += (p_fileName.length() + s_padding.length());
-
-    // add padding and encrypt
-    std::string message(p_fileName);
-    message.append(s_padding);
-    std::string encrypted(m_tx.decrypt(message, 0));
-
-    // combine all the things
-    preamble.append(encrypted);
-
-    // funkify
-    std::string final(fromCharCode(preamble));
-
-    // url encode instead of the fromCharCode funkification
-    preamble = url_encode(final);
+    std::string final;
+    create_message(final, p_fileName, false, true);
+    std::string file(url_encode(final));
 
     // send it!
     boost::asio::streambuf request;
     std::ostream request_stream(&request);
-    request_stream << "GET /jsproxy/?" << preamble;
+    request_stream << "GET /jsproxy/?" << file;
     request_stream << " HTTP/1.1\r\n";
     request_stream << "Host: " << m_ip << ":" << m_port << "\r\n";
     request_stream << "Accept: */*\r\n";
@@ -582,44 +702,21 @@ bool JSProxySession::getFile(const std::string& p_fileName, std::string& p_respo
     boost::asio::write(m_socket, request);
 
     // grab the response
-    return recvMessage(p_response);
+    bool p_doesntmatter = false;
+    return recvMessage(p_response, p_doesntmatter);
 }
 
 bool JSProxySession::putFile(const std::string& p_fileName, const std::string& p_content)
 {
-    // create the preamble
-    std::string preamble(m_id);
-    preamble.resize(8, 0);
-    boost::uint32_t reversed = ntohl(m_sequence);
-    memcpy(const_cast<char*>(preamble.data()) + 4, &reversed, 4);
-
-    // increment the sequence number for next time
-    m_sequence += (p_fileName.length() + s_padding.length());
-
-    // add padding and encrypt
-    std::string message(p_fileName);
-    message.append(s_padding);
-    std::string encrypted(m_tx.decrypt(message, 0));
-
-    // combine all the things
-    preamble.append(encrypted);
-
-    // funkify
-    std::string final(fromCharCode(preamble));
-
-    // url encode instead of the fromCharCode funkification
-    preamble = url_encode(final);
-
-    boost::uint32_t message_length = p_content.size();
+    std::string final;
+    create_message(final, p_fileName, false, true);
+    std::string file(url_encode(final));
 
     boost::asio::streambuf request;
     std::ostream request_stream(&request);
-
-    request_stream << "POST /jsproxy/put?";
-    request_stream << preamble;
-    request_stream << " HTTP/1.1\r\n";
+    request_stream << "POST /jsproxy/put?" << file << " HTTP/1.1\r\n";
     request_stream << "Host: " << m_ip << ":" << m_port << "\r\n";
-    request_stream << "Content-Length: " << message_length << "\r\n";
+    request_stream << "Content-Length: " << p_content.size() << "\r\n";
     request_stream << "Content-Type: text/plain;charset=UTF-8\r\n";
     request_stream << "Accept: */*\r\n";
     request_stream << "Connection: keep-alive\r\n\r\n";
@@ -631,27 +728,9 @@ bool JSProxySession::putFile(const std::string& p_fileName, const std::string& p
 
 bool JSProxySession::uploadFile(const std::string& p_fileName, const std::string& p_content)
 {
-    // create the preamble
-    std::string preamble(m_id);
-    preamble.resize(8, 0);
-    boost::uint32_t reversed = ntohl(m_sequence);
-    memcpy(const_cast<char*>(preamble.data()) + 4, &reversed, 4);
-
-    // increment the sequence number for next time
-    m_sequence += s_padding.length();
-
-    // add padding and encrypt
-    std::string message(s_padding);
-    std::string encrypted(m_tx.decrypt(message, 0));
-
-    // combine all the things
-    preamble.append(encrypted);
-
-    // funkify
-    std::string final(fromCharCode(preamble));
-
-    // url encode instead of the fromCharCode funkification
-    preamble = url_encode(final);
+    std::string final;
+    create_message(final, p_fileName, false, true);
+    std::string file(url_encode(final));
 
     std::stringstream payload;
     payload << "-----------------------------7e223912c009c\r\n";
@@ -663,9 +742,7 @@ bool JSProxySession::uploadFile(const std::string& p_fileName, const std::string
 
     boost::asio::streambuf request;
     std::ostream request_stream(&request);
-    request_stream << "POST /jsproxy/upload?";
-    request_stream << preamble;
-    request_stream << " HTTP/1.1\r\n";
+    request_stream << "POST /jsproxy/upload?" << file << " HTTP/1.1\r\n";
     request_stream << "Host: " << m_ip << ":" << m_port << "\r\n";
     request_stream << "Content-Type: multipart/form-data; boundary=---------------------------7e223912c009c\r\n";
     request_stream << "Content-Length: " << payload.str().length() << "\r\n\r\n";
@@ -677,69 +754,54 @@ bool JSProxySession::uploadFile(const std::string& p_fileName, const std::string
 
 bool JSProxySession::recvEncrypted(WinboxMessage& p_message)
 {
+    bool binaryFormat = false;
     std::string message;
-    if (!recvMessage(message))
+    if (!recvMessage(message, binaryFormat) || message.size() < 16)
     {
+        std::cout << "grrr." << std::endl;
+        return false;
+    }
+  
+    std::string encrypted;
+    if (binaryFormat == false)
+    {
+        std::string id;
+        std::string seq;
+        std::string rchallenge;
+        if (!read_js_encoded_message(message, id, seq, encrypted))
+        {
+            std::cout << "grrr." << std::endl;
+            return false;
+        }
+    }
+    else
+    {
+        // lol id and seq say what?
+        message.erase(0, 8);
+        encrypted.assign(message);
+    }
+
+    // decrypted
+    std::string decrypted(m_rx.decrypt(encrypted, 0));
+
+    // we expect *AT LEAST* 8 bytes of padding.
+    if (decrypted.size() <= 8)
+    {
+        std::cout << "grrr." << std::endl;
         return false;
     }
 
-    // skip the first 8 bytes [4 bytes id][4 bytes sequence] where sequence is len(payload) + 8
-    std::size_t index = 0;
-    std::string id;
-    for (std::size_t i = 0; i < 4; i++)
+    // validate the padding
+    std::string padding(decrypted.substr(decrypted.size() - 8));
+    if (padding != "        ")
     {
-        try
-        {
-            int codePoint = codePointAt(message, index);
-            id.push_back(codePoint);
-        }
-        catch (const std::exception&)
-        {
-            return false;
-        }
+        std::cout << "Bad decrypt! " << padding << std::endl;
+        return false;
     }
 
-    std::string sequence;
-    for (std::size_t i = 0; i < 4; i++)
-    {
-        try
-        {
-            int codePoint = codePointAt(message, index);
-            sequence.push_back(codePoint);
-        }
-        catch (const std::exception&)
-        {
-            return false;
-        }
-    }
+    // remove the padding
+    decrypted.resize(decrypted.size() - 8 );
 
-    std::string converted;
-    for ( ; index < message.length(); )
-    {
-        try
-        {       
-            int codePoint = codePointAt(message, index) & 0xff;
-            converted.push_back(codePoint);
-        }
-        catch (const std::exception&)
-        {
-            return false;
-        }
-    }
-
-    message.assign(m_rx.decrypt(converted, 0));
-
-    if (!message.empty())
-    {
-        if (message[0] == '{')
-        {
-            p_message.parse_json(message);
-        }
-        else
-        {
-            p_message.parse_binary(message);
-        }
-    }
-
-    return true;
+    // parse to winbox and return
+    return (binaryFormat ? p_message.parse_binary(decrypted) : p_message.parse_json(decrypted));
 }

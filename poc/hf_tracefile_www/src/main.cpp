@@ -113,7 +113,7 @@ int main(int p_argc, const char** p_argv)
     msg.add_string(1, "");
     msg.add_string(7, "vt102");
     msg.add_string(9, "-l a"); // drop into telnet client shell
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
 
     msg.reset();
     if (!jsSession.recvEncrypted(msg))
@@ -139,7 +139,7 @@ int main(int p_argc, const char** p_argv)
     msg.add_u32(5,82);
     msg.add_u32(6,24);
     msg.add_u32(0xfe0001, session_id);
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
 
     boost::uint32_t tracker = 0;
     msg.reset();
@@ -156,7 +156,7 @@ int main(int p_argc, const char** p_argv)
     msg.set_reply_expected(true);
     msg.add_u32(3, tracker);
     msg.add_u32(0xfe0001, session_id);
-    jsSession.sendEncrypted(msg);
+    jsSession.sendEncrypted(msg, false);
 
     msg.reset();
     if (!jsSession.recvEncrypted(msg))
@@ -184,8 +184,8 @@ int main(int p_argc, const char** p_argv)
     msg.set_reply_expected(true);
     msg.add_u32(3, tracker);
     msg.add_u32(0xfe0001, session_id);
-    msg.add_raw(2, "set tracefile /pckg/option\n");
-    jsSession.sendEncrypted(msg);
+    msg.add_raw(2, "set tracefile /flash/nova/etc/devel-login\n");
+    jsSession.sendEncrypted(msg, false);
 
     msg.reset();
     if (!jsSession.recvEncrypted(msg))

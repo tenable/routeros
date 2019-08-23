@@ -31,6 +31,7 @@
 #define SESSION_HPP
 
 #include <string>
+#include <boost/asio.hpp>
 
 class WinboxMessage;
 
@@ -46,15 +47,34 @@ public:
 
     virtual ~Session();
 
+    virtual bool connect();
+
+    virtual void close();
+
     virtual bool send(const WinboxMessage& p_msg) = 0;
 
     virtual bool receive(WinboxMessage& p_msg) = 0;
 
 protected:
 
+    virtual void check_deadline();
+
+protected:
+
+    //! the ip address to connet to
     std::string m_ip;
 
+    //! the port to connect to
     std::string m_port;
+
+    //! the IO service associated with our blocking socket
+    boost::asio::io_service m_io_service;
+
+    //! the blocking socket we use for communication
+    boost::asio::ip::tcp::socket m_socket;
+
+    //! Timer to use with async socket operations
+    boost::asio::deadline_timer m_deadline;
 };
 
 #endif

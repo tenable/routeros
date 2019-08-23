@@ -1023,7 +1023,7 @@ bool WinboxMessage::parse_json(const std::string& p_input)
                     }
                     std::string full_match(match[0]);
                     std::string value_string(match[1]);
-                    input.erase(0, full_match.size() - 1);
+                    input.erase(0, full_match.size());
 
                     std::vector<std::string> raw_chars;
                     boost::split(raw_chars, value_string, boost::is_any_of(","));

@@ -125,14 +125,14 @@ int main(int p_argc, const char** p_argv)
 
     if (!jsSession.negotiateEncryption(username, password))
     {
-        std::cerr << "Encryption neogitiation failed." << std::endl;
+        std::cerr << "Encryption negotiation failed." << std::endl;
         return EXIT_FAILURE;
     }
 
     std::string filename;
     for (int i = 0; i < 0x200; i++)
     {
-      filename.push_back('A');
+        filename.push_back('A');
     }
 
     if (jsSession.uploadFile(filename, "lol."))

@@ -63,8 +63,6 @@ The tool *cannot exploit* the the following versions:
 * Longterm: 6.43.15 - current (6.44.5)
 * Stable: 6.44 - current (6.45.2)
 
-Due to some protocol changes, the tool can't even talk to version 6.45+.
-
 ## Which architectures are supported though?
 
 All of them. Cleaner Wrasse relies on simple file creation vulnerabilities. No shell code is required. No compiling .so for various architectures. Just simple file creation and rc scripts.
@@ -75,7 +73,7 @@ Indeed. Not only do the vulns (mostly) require authentication, but this isn't re
 
 ## Wait, www doesn't work for all the advertised versions!
 
-That's true! MikroTik rolled out a new authentication / encryption scheme for the web interface in 6.43.0. I haven't had time to figure that out yet. Sorry! Also, really old versions of www don't quite follow the same encryption scheme either. As long as you stay in 6.0 - 6.42 land, you'll be fine. I'm not perfect you know!
+That's true! RouterOS before 6.0 used different login algorithms. It isn't worth my timing figuring those out. Be happy I got 6.43+ working!
 
 ## Does the backdoor go away if I reboot the system?
 
@@ -93,7 +91,7 @@ That is a bit trickier! For now, Cleaner Wrasse can create a symlink to root in 
 
 ## What about the unsupported versions?
 
-Cleaner Wrasse simply can't talk to the new versions of Winbox (6.45) and JSProxy (6.43). Some lazy git hasn't worked out how they work yet. But also, newer versions have patched the vulnerabilities I'm using in CW. If you have a version that CW can't exploit but you want to get the devel shell, this is what I recommend:
+Cleaner Wrasse simply can't talk to the new versions of Winbox (6.45). Some lazy git hasn't worked that out yet. But also, newer versions have patched the vulnerabilities I'm using in CW. If you have a version that CW can't exploit but you want to get the devel shell, this is what I recommend:
 
 * Downgrade to 6.43.14 Long-term
 * Use CW to drop a symlink in the user's directory
