@@ -76,8 +76,9 @@ public:
      *
      * \param[in] p_username the username to log in as
      * \param[in] p_password the password to use for log in
+     * \param[in] p_skipLogin skip the final stage of the curve25519 login process.
      */
-    bool negotiateEncryption(const std::string& p_username, const std::string& p_password);
+    bool negotiateEncryption(const std::string& p_username, const std::string& p_password, bool p_skipLogin=false);
 
 
     virtual bool send(const WinboxMessage& p_msg);
@@ -148,10 +149,11 @@ private:
      *
      * \param[in] p_username the user to login as
      * \param[in] p_password the password to use for login
+     * \param[in] p_skipLogin skip the final stage of the curve25519 login process.
      *
      * \return true on success and false otherwise
      */
-    bool doPublicKey(const std::string& p_username, const std::string& p_password);
+    bool doPublicKey(const std::string& p_username, const std::string& p_password, bool p_skipLogin=false);
 
     /**
      * ROS 6.0 - 6.42.whatever uses MSCHAPv2 to negotiate the session key. The username and password

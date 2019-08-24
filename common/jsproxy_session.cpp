@@ -323,7 +323,7 @@ JSProxySession::~JSProxySession()
 {
 }
 
-bool JSProxySession::negotiateEncryption(const std::string& p_username, const std::string& p_password)
+bool JSProxySession::negotiateEncryption(const std::string& p_username, const std::string& p_password, bool p_skipLogin)
 {
     // so this is kind of annoying. Depending on the version, RouterOS either wants an empty post or
     // a post containing our public key. My goal for this library is to support backwards compatiblity.
@@ -349,13 +349,13 @@ bool JSProxySession::negotiateEncryption(const std::string& p_username, const st
         {
             return false;
         }
-        return doPublicKey(p_username, p_password);
+        return doPublicKey(p_username, p_password, p_skipLogin);
     }
 
     return doMSCHAPv2(message, p_username, p_password);
 }
 
-bool JSProxySession::doPublicKey(const std::string& p_username, const std::string& p_password)
+bool JSProxySession::doPublicKey(const std::string& p_username, const std::string& p_password, bool p_skipLogin)
 {
     std::string pubkey_msg;
 
@@ -418,6 +418,13 @@ bool JSProxySession::doPublicKey(const std::string& p_username, const std::strin
 
     seedRC4(masterKey, false);
     seedRC4(masterKey, true);
+
+    // if we want to do some weird stuff (cve-2019-13955) then we have to skip the final
+    // stage of login
+    if (p_skipLogin)
+    {
+        return true;
+    }
 
     WinboxMessage win_msg;
     win_msg.add_string(1, p_username);
@@ -758,7 +765,6 @@ bool JSProxySession::recvEncrypted(WinboxMessage& p_message)
     std::string message;
     if (!recvMessage(message, binaryFormat) || message.size() < 16)
     {
-        std::cout << "grrr." << std::endl;
         return false;
     }
   
@@ -770,7 +776,6 @@ bool JSProxySession::recvEncrypted(WinboxMessage& p_message)
         std::string rchallenge;
         if (!read_js_encoded_message(message, id, seq, encrypted))
         {
-            std::cout << "grrr." << std::endl;
             return false;
         }
     }
@@ -787,7 +792,6 @@ bool JSProxySession::recvEncrypted(WinboxMessage& p_message)
     // we expect *AT LEAST* 8 bytes of padding.
     if (decrypted.size() <= 8)
     {
-        std::cout << "grrr." << std::endl;
         return false;
     }
 
