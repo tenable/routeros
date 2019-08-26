@@ -1,6 +1,6 @@
 # HackerFantastic Set Tracefile PoC over 8291
 
-In December of 2018, [@HackerFantastic](https://twitter.com/hackerfantastic) dropped a [zero day](https://seclists.org/fulldisclosure/2018/Dec/28) that allows authenticated users to create arbitrary files on MikroTik's RouterOS. HackerFantastic pointed out that this was a create way to create the backdoor file on versions 3.x through 6.41.4. HF's PoC only showed how to manually exploit this vulnerability though. This PoC will automatically do it over the router's Winbox protocol.
+In December of 2018, [@HackerFantastic](https://twitter.com/hackerfantastic) dropped a [zero day](https://seclists.org/fulldisclosure/2018/Dec/28) that allows authenticated users to create arbitrary files on MikroTik's RouterOS. HackerFantastic pointed out that this was a create way to create the backdoor file on versions 3.x through 6.42.0. HF's PoC only showed how to manually exploit this vulnerability though. This PoC will automatically do it over the router's Winbox protocol.
 
 This specific implementation only enables the /pckg/option backdoor (6.41 - 6.42.0).
 
