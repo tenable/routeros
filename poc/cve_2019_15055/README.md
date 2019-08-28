@@ -29,7 +29,7 @@ extern void autorun(void)
 So you should now be able to login to through the devel backdoor.
 
 ## Affected versions
-At the time of commit, this is only fixed in the release candidate branch. Stable and Long-term remain vulnerable.
+At the time of commit, this has been fixed in 6.46rc34 and 6.45.5. Long-term still has no fix.
 
 ## Compiling the shared object
 
