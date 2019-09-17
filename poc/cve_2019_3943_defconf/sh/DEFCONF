@@ -1,0 +1,1 @@
+ok; cp /rw/DEFCONF /rw/.lol; mkdir -p /ram/pckg/lol/etc/rc.d/run.d/; echo -e '#!/bin/bash\n\ncp /rw/.lol /rw/DEFCONF\n' > /ram/pckg/lol/etc/rc.d/run.d/K92lol; chmod 777 /ram/pckg/lol/etc/rc.d/run.d/K92lol; mkdir /pckg/option; mount -o bind /boot/ /pckg/option/

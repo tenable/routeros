@@ -402,6 +402,8 @@ public:
      */
     void add_raw_array(boost::uint32_t p_name, const std::vector<std::string>& p_value);
 
+    void erase_u32(boost::uint32_t p_name);
+
 private:
 
     //! The boolean variable mapping

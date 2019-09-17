@@ -1,5 +1,5 @@
 /*
-  Copyright 2018 Tenable, Inc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                *
+  Copyright 2018-2019 Tenable, Inc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                *
 
   Redistribution and use in source and binary forms, with or without modification,
   are permitted provided that the following conditions are met:
@@ -35,6 +35,7 @@
 #include <boost/cstdint.hpp>
 
 #include "rc4.hpp"
+#include "session.hpp"
 
 class WinboxMessage;
 
@@ -51,7 +52,7 @@ class WinboxMessage;
  *
  * Sockets are blocking so some funniness can come of that.
  */
-class JSProxySession
+class JSProxySession : public Session
 {
 public:
 
@@ -66,14 +67,7 @@ public:
     /*!
      * Deconstructor attempts to close the socket if it hasn't been already
      */
-    ~JSProxySession();
-
-    /*!
-     * Connects to the remote host.
-     *
-     * \return true on success and false otherwise
-     */
-    bool connect();
+    virtual ~JSProxySession();
 
     /*!
      * Handles the challenge/response negotiation with the server. This
@@ -82,22 +76,34 @@ public:
      *
      * \param[in] p_username the username to log in as
      * \param[in] p_password the password to use for log in
+     * \param[in] p_skipLogin skip the final stage of the curve25519 login process.
      */
-    bool negotiateEncryption(const std::string& p_username, const std::string& p_password);
+    bool negotiateEncryption(const std::string& p_username, const std::string& p_password, bool p_skipLogin=false);
+
+
+    virtual bool send(const WinboxMessage& p_msg);
+
+    virtual bool receive(WinboxMessage& p_msg);
 
     /*!
      * Sends an encrypted message from Winbox format
      *
      * \param[in] p_message the message to send
+     * \param[in] p_binaryFormat indicates is the message is binary (not json)
+     * 
+     * \return false on error and true otherwise
      */
-    void sendEncrypted(const WinboxMessage& p_message);
+    bool sendEncrypted(const WinboxMessage& p_message, bool p_binaryFormat);
 
     /*!
      * Sends an encrypted message from string format
      *
      * \param[in] p_message the message to send
+     * \param[in] p_binaryFormat indicates is the message is binary (not json)
+     * 
+     * \return false on error and true otherwise
      */
-    void sendEncrypted(const std::string& p_message);
+    bool sendEncrypted(const std::string& p_message, bool p_binaryFormat);
 
     /*!
      * Receives a message. Depending on the version the server may send us
@@ -137,30 +143,67 @@ public:
 
 private:
 
+    /**
+     * ROS 6.43+ use a public/private Curve25519 key negotiation. This will negotiate the encryption
+     * layer and login the user.
+     *
+     * \param[in] p_username the user to login as
+     * \param[in] p_password the password to use for login
+     * \param[in] p_skipLogin skip the final stage of the curve25519 login process.
+     *
+     * \return true on success and false otherwise
+     */
+    bool doPublicKey(const std::string& p_username, const std::string& p_password, bool p_skipLogin=false);
+
+    /**
+     * ROS 6.0 - 6.42.whatever uses MSCHAPv2 to negotiate the session key. The username and password
+     * are mixed into the keying material so ROS treats proper encryption/decryption as good login.
+     *
+     * \param[in] p_username the user to login as
+     * \param[in] p_password the password to use for login
+     *
+     * \return true on success and false otherwise
+     */
+    bool doMSCHAPv2(const std::string& p_serverResponse, const std::string& p_username, const std::string& p_password);
+
+    /**
+     * Generates the MSCHAPv2 master key.
+     */
     void generateMasterKey(const std::string& p_masterKey, const std::string& p_response);
 
+    /**
+     * Uses the generated master key to seed the m_rx and m_tx RC4 engines
+     */
+    void seedRC4(const std::string& p_masterKey, bool p_client);
+
+    /**
+     * Frames a given message into the proper [4 id] [4 seq] [payload] format. It will also tweak
+     * the message depending if the message is json or binary. Finally, this function can encrypt the
+     * payload as well.
+     */
+    void create_message(std::string& p_message, const std::string& p_payload, bool p_binaryFormat, bool p_encrypt);
+    
     /*!
      * Sends a message over HTTP.
      *
      * \param[in] p_message the message to send
-     */
-    void sendMessage(const std::string& p_message);
-
-    /*!
-     * Receives a message
+     * \param[in] p_binaryFormat indicates is the message is binary (not json)
      *
-     * \param[in,out] p_message the message we just read in
      * \return true if successful and false otherwise
      */
-    bool recvMessage(std::string& p_message);
+    bool sendMessage(const std::string& p_message, bool p_binaryFormat);
+
+    /*!
+     * Receives an HTTP message. No encryption involved at this point
+     *
+     * \param[in,out] p_message the message we just read in
+     * \param[in,out] p_binaryFormat indicates if the message used "msg" or json.
+     * 
+     * \return true if successful and false otherwise
+     */
+    bool recvMessage(std::string& p_message, bool& p_binaryFormat);
 
 private:
-
-    //! the IP addres this object will connect to
-    std::string m_ip;
-
-    //! the port this object will connect to
-    std::string m_port;
 
     //! the session ID that was assigned to this session
     std::string m_id;
@@ -168,17 +211,17 @@ private:
     //! the current amount of data we have transmitted
     boost::uint32_t m_sequence;
 
-    //! the IO service associated with our blocking socket
-    boost::asio::io_service m_io_service;
-
-    //! the blocking socket we use for communication
-    boost::asio::ip::tcp::socket m_socket;
-
     //! the RC4 state for receiving
     RC4 m_rx;
 
     //! the RC4 state for transmission
     RC4 m_tx;
+
+    //! Our curve25519 public key
+    std::array<boost::uint8_t, 32> m_pub_key;
+
+    //! Our curve25519 private key
+    std::array<boost::uint8_t, 32> m_priv_key;
 };
 
 #endif

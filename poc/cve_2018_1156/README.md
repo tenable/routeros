@@ -38,7 +38,7 @@ Where the user has control of the username and password strings. Tenable's proof
 This code was tested on Ubuntu 18.04. There is a dependency on boost and cmake. Simply install them like so:
 
 ```sh
-sudo apt install libboost-dev cmake
+sudo apt install libboost-all-dev cmake
 ```
 
 To compile simply do the following:
