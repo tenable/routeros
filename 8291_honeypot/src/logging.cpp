@@ -66,6 +66,7 @@ void Logging::log(logging::type p_type, const std::string& p_string)
     if (m_fileStream.is_open())
     {
         m_fileStream << toLog.str() << std::endl;
+        std::flush(m_fileStream);
     }
     else
     {

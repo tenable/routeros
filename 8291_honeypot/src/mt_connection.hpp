@@ -46,6 +46,18 @@ class Logging;
  */
 class MT_Connection : public boost::enable_shared_from_this<MT_Connection>
 {
+private:
+
+    enum Connection_State
+    {
+        k_none,
+        k_user_dat_open,
+        k_list_open,
+        k_init_login,
+        k_logged_in,
+        k_close
+    };
+
 public:
 
     /**
@@ -69,7 +81,8 @@ public:
     void set_info(const std::string& p_ip, boost::uint16_t p_port, const std::string& p_geo);
 
     /**
-     * Parses the first four bytes of the connection to determine how much we should read in.
+     * Parses the first four bytes of the connection to determine if the remote connection is
+     * valid or not.
      */
     void read_header();
 
@@ -99,15 +112,24 @@ private:
      * Convert the data from the wire into a WinboxMessage object and determine if the
      * remote host sent us anything interesting. 
      */
-    void analyze_message();
+    void handle_request();
+
+    void do_mproxy_file_request();
+    void do_login_request();
 
 private:
 
     //! the log to write anything useful to
     Logging& m_log;
 
+    //! the IO service associated with our blocking socket
+    boost::asio::io_service& m_io_service;
+
     //! the socket we are operating on
     boost::asio::ip::tcp::socket m_socket;
+
+    //! Timer to use with async socket operations
+    boost::asio::deadline_timer m_deadline;
 
     //! stores the header of the winbox message [total size][chunk size]
     boost::uint8_t m_header_buffer[4];
@@ -126,6 +148,9 @@ private:
 
     //! a winbox message to parse the binary message with
     WinboxMessage m_msg;
+
+    //! current state of this connection
+    Connection_State m_state;
 };
 
 #endif
