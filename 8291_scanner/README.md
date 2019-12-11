@@ -1,12 +1,8 @@
 # Winbox Scanner
 
-This tool takes in a list of IP addresses and tries to send an unencrypted WinboxMessage request to port 8291 for the contents of the devices '/home/web/webfig/list' file. Depending on the version of RouterOS you'll get different responses:
+This tool takes in a list of IP addresses and tries to send an unencrypted WinboxMessage request to port 8291 for the contents of the devices '/home/web/webfig/list' or the '/home/web/winbox/index/ file.
 
-* Before 6.28 - an error message
-* 6.28 - 6.43rc - the length of the list file
-* 6.43rc+ - a lie that the list file is zero bytes long
-
-If we get the length of the file then we'll read it in and parse out the version. The 'list' file looks like this:
+The 'list' file looks like this:
 
 ```
 { crc: 3443480142, size: 1276, name: "advtool.jg", unique: "advtool-b3bce0ff6230.jg", version: "6.45.2" },
@@ -19,6 +15,29 @@ If we get the length of the file then we'll read it in and parse out the version
 { crc: 2926347262, size: 8256, name: "roting4.jg", unique: "roting4-13d08e453887.jg", version: "6.45.2" },
 { crc: 3028528262, size: 3919, name: "secure.jg", unique: "secure-531da8b0289e.jg", version: "6.45.2" },
 { crc: 931659009, size: 16994, name: "wlan6.jg", unique: "wlan6-9d9f594b37fb.jg", version: "6.45.2" },
+```
+
+The 'index' file looks like this:
+
+```
+3254929033 699376 roteros.dll 6.39.3
+671485135 30966 advtool.dll 6.39.3
+2458964751 37770 dhcp.dll 6.39.3
+3206868575 64074 dude.dll 6.39.3
+4228405651 28724 gps.dll 6.39.3
+4256281651 39484 hotspot.dll 6.39.3
+857755925 41200 ipv6.dll 6.39.3
+834303469 31495 kvm.dll 6.39.3
+46930469 28606 lcd.dll 6.39.3
+3728188503 39089 mpls.dll 6.39.3
+3906961237 28919 ntp.dll 6.39.3
+2691523813 34675 pim.dll 6.39.3
+1565999089 43426 ppp.dll 6.39.3
+970744647 55335 roting4.dll 6.39.3
+1036485815 45023 secure.dll 6.39.3
+561681972 2542 system.dll 6.39.3
+566451288 29495 ups.dll 6.39.3
+3606472071 71488 wlan6.dll 6.39.3
 ```
 
 ## Have you ever used this thing?
