@@ -55,6 +55,16 @@ public:
 
     virtual bool send(const WinboxMessage& p_msg);
     virtual bool receive(WinboxMessage& p_msg);
+
+    /**
+     * Using the mproxy 2,2 endpoint, request a file to read
+     */
+    bool m2_mproxy_get_file(const std::string& p_file, std::string& p_result);
+
+    /**
+     * Using the mproxy old(?) protocol, request a file to read
+     */
+    bool old_mproxy_get_file(const std::string& p_file, std::string& p_result);
 };
 
 #endif

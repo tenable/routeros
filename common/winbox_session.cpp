@@ -263,3 +263,121 @@ bool Winbox_Session::receive(WinboxMessage& p_msg)
     return true;
 }
 
+bool Winbox_Session::m2_mproxy_get_file(const std::string& p_file, std::string& p_result)
+{
+    WinboxMessage msg;
+    msg.set_to(2, 2);
+    msg.set_command(7);
+    msg.set_request_id(1);
+    msg.set_reply_expected(true);
+    msg.add_string(1, p_file);
+    if (!send(msg))
+    {
+        return false;
+    }
+
+    msg.reset();
+    if (!receive(msg))
+    {
+        return false;
+    }
+
+    if (msg.has_error())
+    {
+        p_result.assign(msg.get_error_string());
+        return false;
+    }
+
+    boost::uint32_t sessionID = msg.get_session_id();
+    boost::uint16_t file_size = msg.get_u32(2);
+
+    if (file_size == 0)
+    {
+        // new version will just indicate file size is 0
+        return true;
+    }
+
+    msg.reset();
+    msg.set_to(2, 2);
+    msg.set_command(4);
+    msg.set_request_id(2);
+    msg.set_reply_expected(true);
+    msg.set_session_id(sessionID);
+    msg.add_u32(2, file_size);
+    send(msg);
+
+    msg.reset();
+    if (!receive(msg))
+    {
+        return false;
+    }
+
+    if (msg.has_error())
+    {
+        p_result.assign(msg.get_error_string());
+        return false;
+    }
+
+    p_result.assign(msg.get_raw(0x03));
+    return true;
+}
+
+bool Winbox_Session::old_mproxy_get_file(const std::string& p_file, std::string& p_result)
+{
+    std::string index_file_request(p_file);
+    if (index_file_request.size() > 12)
+    {
+        return false;
+    }
+
+    while (index_file_request.size() < 12)
+    {
+        index_file_request.push_back('\x00');
+    }
+    index_file_request.append("\x00\x80\x00\x00\x00\x00", 6);
+
+    boost::uint8_t length = index_file_request.length();
+    boost::asio::streambuf request;
+    std::ostream request_stream(&request);
+    request_stream << length << '\x02' << index_file_request;
+
+    try
+    {
+        boost::asio::write(m_socket, request);
+    }
+    catch(const std::exception&)
+    {
+        return false;
+    }
+
+    boost::system::error_code ec = boost::asio::error::would_block;
+    m_deadline.expires_from_now(boost::posix_time::seconds(2));
+
+    // read in the the header
+    boost::asio::streambuf response;
+    boost::asio::async_read(m_socket, response, boost::asio::transfer_exactly(2), boost::lambda::var(ec) = boost::lambda::_1);
+    do
+    {
+        m_io_service.run_one();
+    }
+    while (ec == boost::asio::error::would_block);
+
+    if (ec)
+    {
+        return false;
+    }
+
+    std::string header;
+    header.assign(std::istreambuf_iterator<char>(&response), std::istreambuf_iterator<char>());
+    response.consume(2);
+
+    // read in the remainder
+    boost::uint32_t to_read = header[0] & 0xff;
+    boost::asio::read(m_socket, response, boost::asio::transfer_exactly(to_read));
+
+
+    p_result.assign(std::istreambuf_iterator<char>(&response), std::istreambuf_iterator<char>());
+    response.consume(to_read);
+
+    return true;
+}

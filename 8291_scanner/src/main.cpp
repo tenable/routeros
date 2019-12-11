@@ -43,17 +43,20 @@
 
 namespace
 {
-    const char s_version[] = "Winbox Scanner 1.0";
+    const char s_version[] = "Winbox Scanner 1.1";
 
     bool parseCommandLine(int p_argCount, const char* p_argArray[],
-                          std::string& p_ipFile, std::string& p_outFile)
+                          std::string& p_ipFile, std::string& p_outFile,
+                          bool& p_list_scan, bool& p_index_scan)
     {
         boost::program_options::options_description description("options");
         description.add_options()
             ("help,h", "A list of command line options")
             ("version,v", "Display version information")
             ("in,i", boost::program_options::value<std::string>(), "The list of addresses to scan")
-            ("out,o", boost::program_options::value<std::string>(), "The file to write to");
+            ("out,o", boost::program_options::value<std::string>(), "The file to write to")
+            ("list_scan", boost::program_options::value<bool>()->default_value(false), "Use the mproxy 2,2 list method")
+            ("index_scan", boost::program_options::value<bool>()->default_value(false), "Use the option 2 index method");
 
         boost::program_options::variables_map argv_map;
         try
@@ -82,10 +85,13 @@ namespace
             return false;
         }
 
-        if (argv_map.count("in") && argv_map.count("out"))
+        if (argv_map.count("in") && argv_map.count("out") &&
+            (argv_map.count("list_scan") || argv_map.count("index_scan")))
         {
             p_ipFile.assign(argv_map["in"].as<std::string>());
             p_outFile.assign(argv_map["out"].as<std::string>());
+            p_list_scan = argv_map["list_scan"].as<bool>();
+            p_index_scan = argv_map["index_scan"].as<bool>();
             return true;
         }
         else
@@ -95,13 +101,92 @@ namespace
 
         return false;
     }
+
+    void do_list_scan(const std::string& p_address, const std::string& p_geo, std::ofstream& p_csv_results)
+    {
+        Winbox_Session winboxSession(p_address, "8291");
+        if (!winboxSession.connect())
+        {
+            return;
+        }
+
+        std::string list;
+        bool result = winboxSession.old_mproxy_get_file("list", list);
+        if (result == false)
+        {
+            if (list.empty())
+            {
+                return;
+            }
+            else
+            {
+                p_csv_results << p_address << "|" << p_geo<< "|" << "old_ver" << std::endl;
+                return;
+            }
+        }
+        else
+        {
+            if (list.empty())
+            {
+                p_csv_results << p_address << "|" << p_geo << "|" << "new_ver" << std::endl;
+                return;
+            }
+        }
+
+        if (!list.empty())
+        {
+            std::smatch matches;
+            // version: "6.39.3"
+            std::regex version_match("version: \"([^\"]+)\"");
+            std::regex_search(list, matches, version_match);
+            if (!matches.empty())
+            {
+                p_csv_results << p_address << "|" << p_geo << "|" << matches[1] << std::endl;
+                return;
+            }
+        }
+
+        p_csv_results << p_address << "|" << p_geo << "|" << "unknown" << std::endl;
+    }
+
+    void do_index_scan(const std::string& p_address, const std::string& p_geo, std::ofstream& p_csv_results)
+    {
+        Winbox_Session winboxSession(p_address, "8291");
+        if (!winboxSession.connect())
+        {
+            return;
+        }
+
+        std::string index;
+        if (!winboxSession.old_mproxy_get_file("index", index))
+        {
+            return;
+        }
+
+        if (!index.empty())
+        {
+            std::smatch matches;
+            // version: "6.39.3"
+            std::regex version_match("roteros.dll ([^\\n]+)");
+            std::regex_search(index, matches, version_match);
+            if (!matches.empty())
+            {
+                p_csv_results << p_address << "|" << p_geo << "|" << matches[1] << std::endl;
+                return;
+            }
+        }
+
+        p_csv_results << p_address << "|" << p_geo << "|" << "unknown" << std::endl;
+    }
 }
 
 int main(int p_argc, const char** p_argv)
 {
     std::string ipList;
     std::string outFile;
-    if (!parseCommandLine(p_argc, p_argv, ipList, outFile))
+    bool list_scan = false;
+    bool index_scan = false;
+    if (!parseCommandLine(p_argc, p_argv, ipList, outFile, list_scan, index_scan))
     {
         return EXIT_FAILURE;
     }
@@ -164,79 +249,19 @@ int main(int p_argc, const char** p_argv)
     
         try
         {
-            Winbox_Session winboxSession(iter->first, "8291");
-            if (!winboxSession.connect())
+            if (list_scan)
             {
-                continue;
+                do_list_scan(iter->first, iter->second, csv_results);
             }
-
-            WinboxMessage msg;
-            msg.set_to(2, 2);
-            msg.set_command(7);
-            msg.set_request_id(1);
-            msg.set_reply_expected(true);
-            msg.add_string(1, "list");
-            if (!winboxSession.send(msg))
+            else if (index_scan)
             {
-                continue;
+                do_index_scan(iter->first, iter->second, csv_results);
             }
-
-            msg.reset();
-            if (!winboxSession.receive(msg))
+            else 
             {
-                continue;
+                std::cerr << "Do nothing?" << std::endl;
+                return EXIT_FAILURE;
             }
-
-            boost::uint32_t sessionID = msg.get_session_id();
-            boost::uint16_t file_size = msg.get_u32(2);
-
-            if (msg.has_error())
-            {
-                csv_results << iter->first << "|" << iter->second << "|"  << "old_ver" << std::endl;
-                continue;
-            }
-
-            if (sessionID == 0 || file_size == 0)
-            {
-                csv_results << iter->first << "|" << iter->second << "|"  << "new_ver" << std::endl;
-                continue;
-            }
-
-            msg.reset();
-            msg.set_to(2, 2);
-            msg.set_command(4);
-            msg.set_request_id(2);
-            msg.set_reply_expected(true);
-            msg.set_session_id(sessionID);
-            msg.add_u32(2, file_size);
-            winboxSession.send(msg);
-
-            msg.reset();
-            if (!winboxSession.receive(msg))
-            {
-                continue;
-            }
-
-            if (msg.has_error())
-            {
-                std::cout << msg.get_error_string() << std::endl;
-            }
-            std::string raw_payload(msg.get_raw(0x03));
-            if (!raw_payload.empty())
-            {
-                std::smatch matches;
-                // version: "6.39.3"
-                std::regex version_match("version: \"([^\"]+)\"");
-                std::regex_search(raw_payload, matches, version_match);
-                if (!matches.empty())
-                {
-                    csv_results << iter->first << "|" << iter->second << "|"  << matches[1] << std::endl;
-                    continue;
-                }
-            }
-
-            std::cout << raw_payload << std::endl;
-            csv_results << iter->first << "|" << iter->second << "|"  << "unknown" << std::endl;
         }
         catch (const std::exception&)
         {
