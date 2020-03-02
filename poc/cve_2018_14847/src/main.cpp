@@ -123,6 +123,12 @@ int main(int p_argc, const char** p_argv)
         return EXIT_FAILURE;
     }
 
+    if (msg.has_error())
+    {
+        std::cerr << msg.get_error_string() << std::endl;
+        return EXIT_FAILURE;
+    }
+
     boost::uint32_t sessionID = msg.get_session_id();
     boost::uint16_t file_size = msg.get_u32(2);
     if (file_size == 0)

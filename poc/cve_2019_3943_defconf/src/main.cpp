@@ -133,7 +133,7 @@ int main(int p_argc, const char** p_argv)
     WinboxMessage msg;  
     msg.set_to(72,1);
     msg.set_command(1);
-    msg.add_string(1, "//./.././.././../rw/DEFCONF");
+    msg.add_string(1, "./.././.././../rw/DEFCONF");
     msg.set_request_id(5);
     msg.set_reply_expected(true);
     
