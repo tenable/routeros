@@ -18,6 +18,7 @@ add_executable(${PROJECT_NAME}
                 ../../common/md4.cpp
                 ../../common/rc4.cpp
                 ../../common/des.cpp
+                ../../common/curve25519-donna.cpp
                 ../../common/winbox_message.cpp)
 
 
