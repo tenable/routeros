@@ -56,6 +56,12 @@ Winbox_Session::~Winbox_Session()
 
 bool Winbox_Session::login(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id)
 {
+    return login_old(p_username, p_password, p_session_id) || login_new(p_username, p_password, p_session_id);
+}
+
+bool Winbox_Session::login_old(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id)
+{
+    std::cout << "Try old login method pre-v6.43 ..." << std::endl;
     WinboxMessage msg;
 
     // request the challenge
@@ -110,6 +116,41 @@ bool Winbox_Session::login(const std::string& p_username, const std::string& p_p
     msg.add_string(1, p_username);
     msg.add_raw(9, salt);
     msg.add_raw(10, hashed);
+    if (!send(msg))
+    {
+        return false;
+    }
+
+    msg.reset();
+    if (!receive(msg))
+    {
+        std::cerr << "Error receiving a response." << std::endl;
+        return false;
+    }
+
+    if (msg.has_error())
+    {
+        std::cerr << msg.get_error_string() << std::endl;
+        return false;
+    }
+
+    p_session_id = msg.get_session_id();
+
+    return true;
+}
+
+bool Winbox_Session::login_new(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id)
+{
+    std::cout << "Try new login method post-v6.43 ..." << std::endl;
+    WinboxMessage msg;
+
+    msg.set_to(13, 4);
+    msg.set_command(1);
+    msg.set_request_id(4);
+    msg.set_session_id(p_session_id);
+    msg.set_reply_expected(true);
+    msg.add_string(1, p_username);
+    msg.add_string(3, p_password);
     if (!send(msg))
     {
         return false;

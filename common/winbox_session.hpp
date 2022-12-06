@@ -65,6 +65,18 @@ public:
      * Using the mproxy old(?) protocol, request a file to read
      */
     bool old_mproxy_get_file(const std::string& p_file, std::string& p_result);
+
+private:
+    /**
+     * Login method pre-v6.43
+     */
+    bool login_old(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id);
+
+    /**
+     * Login method post-v6.43
+     */
+    bool login_new(const std::string& p_username, const std::string& p_password, boost::uint32_t& p_session_id);
+
 };
 
 #endif
